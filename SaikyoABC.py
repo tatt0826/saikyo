@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[23]:
+# In[4]:
 
 # coding: utf-8
 #from __future__ import print_function
@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 __version__ = "1.03"
 
 
-# In[32]:
+# In[150]:
 
 class SaikyoABC(object):
     u"""西京中学プロジェクト：答案データ(Answer Box Creater)処理用クラス
@@ -31,7 +31,10 @@ class SaikyoABC(object):
         - stroke.PENTYPE : ペンタイプ（STYLUS, ERASEPEN, NAMEのいずれか）
         - stroke.PENWIDTH : ペンの太さ（int型)
         - stroke.Timestamp : そのストロークが書き始められた時刻
-        - stroke.STROKE : np.arrayで与えられるストローク座標データ    
+        - stroke.STROKE : np.arrayで与えられるストローク座標データ
+        
+    以下で出力されるインスタンス変数、メソッドの内、以降のデータ解析に用いられるものについては
+    Compare_answersの中で説明しているのでそちらを参照してください。
     """
         
     def __init__(self,filename=None):
@@ -46,6 +49,8 @@ class SaikyoABC(object):
             filename: ファイル名（strokes.csv）
         """
         self.filename = filename
+        self.true_or_false = 1
+        u"""filenameの答案が正解しているなら２三角なら１間違いなら０"""
         
         # ストロークが入ったCSVファイルを読み込みます．ただし，最初の行と最後の行は読み込みません．
         df = pd.read_csv(filename,header=None,skiprows=1,skipfooter=1,engine='python')
@@ -487,8 +492,8 @@ class SaikyoABC(object):
         
     def __get_block_grid(self):
         u"""
-        各ブロック内のストロークを、ブロックをマス目のある座標と考えて、ストロークが通るマスに１を入れいきます。
-        stroke_grid[block_num] = [[101001],[1000111],[1010110],[0001010],.....]
+        各ブロック内のストロークを、ブロックをマス目のある座標と考えて、ストロークが通るマスに１を入れていきます。
+        block_grid[block_num] = [[101001],[1000111],[1010110],[0001010],.....]
         """
         X = 0
         Y = 1
@@ -498,57 +503,109 @@ class SaikyoABC(object):
         ymax = 3
         self.block_grid = [0]*len(self.blocks)
         for block_num in range(len(self.blocks)):
+            #print('block_num:::{0}--------------------------------------------'.format(block_num))
             xcoo_min = self.block_range[block_num][X][xmin]
             ycoo_min = self.block_range[block_num][Y][ymin]
             """上記の変数でのちのストロークの位置に関わらず楽にblock_gridにプロットできる。"""
-            line_range = self.block_range[block_num][X][xmax] - self.block_range[block_num][X][xmin]
-            row_range = self.block_range[block_num][Y][ymax] - self.block_range[block_num][Y][ymin]
-            self.block_grid[block_num] = [[0]*line_range]*row_range
-            print(self.block_grid)
+            row_range = self.block_range[block_num][X][xmax] - self.block_range[block_num][X][xmin]
+            line_range = self.block_range[block_num][Y][ymax] - self.block_range[block_num][Y][ymin]
+            self.block_grid[block_num] = np.array([[0 for i_line in range(line_range+2)] for i_row in range(row_range+2)])
             for stroke_num in self.blocks[block_num]:
+                #print('stroke_num:::{0}========================================='.format(stroke_num))
                 for coo_num in range(len(self.stroke.STROKE[stroke_num][X])-1):
-                    for coo_len_num in range(abs(self.stroke.STROKE[stroke_num][X][coo_num+1] - self.stroke.STROKE[stroke_num][X][coo_num])):
-                        u"""
-                        coo_len_numはstroke_numのstrokeのcoo_num番目のx座標から次のx座標までの長さ
-                        """
-                        print('coo_len_num_range:{0}'.format(range(self.stroke.STROKE[stroke_num][X][coo_num+1] - self.stroke.STROKE[stroke_num][X][coo_num])))
-                        if self.stroke.STROKE[stroke_num][X][coo_num+1] < self.stroke.STROKE[stroke_num][X][coo_num]:
-                            m_or_p = -1
-                        else:
-                            m_or_p = 1
-                        u"""この数字はx座標を右に見ていくのか左に見ていくのかを楽に考えるために使います。"""
-                        slope = ((self.stroke.STROKE[stroke_num][Y][coo_num+1] - self.stroke.STROKE[stroke_num][Y][coo_num])
-                                 / (self.stroke.STROKE[stroke_num][X][coo_num+1]-self.stroke.STROKE[stroke_num][X][coo_num]))*m_or_p
-                        line = int(self.stroke.STROKE[stroke_num][Y][coo_num] + slope * coo_len_num - ycoo_min)
-                        row = self.stroke.STROKE[stroke_num][X][coo_num] + m_or_p*coo_len_num - xcoo_min
-                        if line >= len(self.block_grid[block_num]):
+                    u"""coo_numは特定のストロークを分割した時の各直線に順番をふった時の番号"""
+                    if self.stroke.STROKE[stroke_num][X][coo_num+1] < self.stroke.STROKE[stroke_num][X][coo_num]:
+                        m_or_p = -1
+                    else:
+                        m_or_p = 1
+                    u"""この数字はx座標を右に見ていくのか左に見ていくのかを楽に考えるために使います。"""
+                    slope = ((self.stroke.STROKE[stroke_num][Y][coo_num+1] - self.stroke.STROKE[stroke_num][Y][coo_num])
+                             / (self.stroke.STROKE[stroke_num][X][coo_num+1]-self.stroke.STROKE[stroke_num][X][coo_num]))*m_or_p
+                    if slope <= 1 and slope >= -1:
+                        for coo_len_num in range(abs(self.stroke.STROKE[stroke_num][X][coo_num+1]
+                                                     - self.stroke.STROKE[stroke_num][X][coo_num])):
+                            u"""
+                            coo_len_numはstroke_numのstrokeのcoo_num番目のx座標から次のx座標までの長さ
                             """
+                            line = self.stroke.STROKE[stroke_num][Y][coo_num] + slope * coo_len_num - ycoo_min
+                            row = self.stroke.STROKE[stroke_num][X][coo_num] + m_or_p*coo_len_num - xcoo_min
+                            """    
+                            print('block_num:{0}'.format(block_num))
                             print('line:{0}'.format(line))
-                            print('y_grid:{0}'.format(len(self.block_grid[block_num])))
-                            """
-                            line = len(self.block_grid[block_num]) - 1
-                        if row >= len(self.block_grid[block_num][0]):
-                            """
                             print('row:{0}'.format(row))
-                            print('x_grid:{0}'.format(len(self.block_grid[block_num][0])))
+                            print('y_grid_len:{0}'.format(len(self.block_grid[block_num])))    
+                            print(self.block_grid[block_num][line][row])
                             """
-                            row = len(self.block_grid[block_num][0]) - 1
-                            if line < 0:
-                                print(line)
-                            if row < 0:
-                                print(row)
-                        
-                        """    
-                        print('block_num:{0}'.format(block_num))
-                        print('line:{0}'.format(line))
-                        print('row:{0}'.format(row))
-                        print('y_grid_len:{0}'.format(len(self.block_grid[block_num])))    
-                        print(self.block_grid[block_num][line][row])
-                        """
-                        self.block_grid[block_num][line][row] = 1
-
+                            self.block_grid[block_num][row+1][int(line)+1] = 1
+                            #print(self.block_grid[block_num])
+                    else:
+                        for coo_len_num in range(abs(self.stroke.STROKE[stroke_num][Y][coo_num+1]
+                                                     - self.stroke.STROKE[stroke_num][Y][coo_num])):
+                            line = self.stroke.STROKE[stroke_num][Y][coo_num] + m_or_p*coo_len_num - ycoo_min
+                            row = self.stroke.STROKE[stroke_num][X][coo_num] + (1/slope) * coo_len_num - xcoo_min
+                            self.block_grid[block_num][int(row)+1][line+1] = 1
+                
+    def __get_grid_feature(self):
+        u"""self.block_gridで表現されたペンストロークの特徴量を抽出します。
+        グリッドにフィルターをかけて行き、中央のマスがプロットされていれば、
+        その周囲のプロットの模様のパターンを数え上げます。"""
+        for block_num in block_grid:
+            for row in block_grid[block_num]:
+                if row == 0 or row == (len(block_grid[block_num])-1):
+                    continue
+                else:
+                    for line in block_grid[block_num][row]:
+                        if line == 0 or line == (len(block_grid[block_num])-1):
+                            continue
+                        else:
+                            fiter_block = np.array([[self.block_grid[row-1][line-1],self.block_grid[row-1][line],self.block_grid[row-1][line+1]],
+                                                    [self.block_grid[row][line-1],self.block_grid[row][line],self.block_grid[row][line+1]],
+                                                    [self.block_grid[row+1][line-1],self.block_grid[row+1][line],self.block_grid[row+1][line+1]]])
+                            self.__grid_filter(filter_block,block_num)
+                    
+                    #self.grid_feature[]
                                              
-                                             
+    def __grid_filter(self,block,block_num):
+        u"""上記で用いるフィルターの計算です。
+        row,lineがフィルターをかける領域の中心座標です。"""
+        grid_shape = block.nonzero()
+        if grid_shape[0].shape == 1:
+            u"""エラー？特徴量としては無視しても良いかもしれません。"""
+            self.grid_feature[block_num][0] += 1
+        elif grid_shape[0].shape == 2:
+            u"""端点"""
+            self.grid_feature[block_num][1] += 1
+        elif grid_shape[0].shape == 3:
+            u"""恐らく１本の線"""
+            vec1 = np.array([grid_shape[0][0]-1,grid_shape[1][0]-1])
+            vec2 = np.array([grid_shape[0][1]-1,grid_shape[1][1]-1])
+            angle = get_angle(vec1,vec2)
+            if angle > 180 or angle == 0:
+                print("angle error!!!========================================================")
+                print(angle)
+            self.grid_feature[block_num][1+int(angle/45)] += 1
+            u"""grid_feature[block_num][feature_num]のfeature_numが２〜５までの特徴量です。
+            要するに４パターン存在します。"""
+        elif grid_shape[0].shape == 4:
+            vec1 = np.array([grid_shape[0][0]-1,grid_shape[1][0]-1])
+            vec2 = np.array([grid_shape[0][1]-1,grid_shape[1][1]-1])
+            vec3 = np.array([grid_shape[0][2]-1,grid_shape[1][2]-1])
+            angle1 = get_angle(vec1,vec2)
+            angle2 = get_angle(vec1,vec3)
+            angle3 = get_angle(vec2,vec3)
+            
+            
+            """＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+            ＝＝＝＝＝＝＝＝続きはここから＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+            ＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+            """
+            
+            
+            
+        elif grid_shape[0].shape == 5:
+        else:
+        
+        
     
     
     def get_feature_value(self):
@@ -559,9 +616,9 @@ class SaikyoABC(object):
         """
         self.__get_block_grid()
         stroke_ymax = [np.max(s[1]) for s in abc.stroke.STROKE]
-        image_height = max()
-        underline = image_height * (2/3)
-        self.__check_stroke_or_string(underline)
+        #image_height = max()
+        #underline = image_height * (2/3)
+        #self.__check_stroke_or_string(underline)
             
     
     
@@ -580,13 +637,21 @@ def strokeLength(one_stroke):
     return np.sqrt(np.sum(d**2))
 
 
+def get_angle(vec1,vec2):
+    inn_pro = np.dot(vec1,vec2)
+    vec1_len = np.linalg.norm(x)
+    vec2_len = np.linalg.norm(y)
+    angle = (np.arccos(inn_pro / (vec1_len*vec2_len))/np.pi)*180
+    return angle
+
+
 def grid_plot(grid_block_num):
     u"""グリッドのリストをプロットするための関数です"""
-    plt.xlim([0,len(grid_block_num[0])])
-    plt.ylim([0,len(grid_block_num)])
-    for line in range(len(grid_block_num)):
-        for row in range(len(grid_block_num[line])):
-            if grid_block_num[line][row] == 1:
+    plt.xlim([0,len(grid_block_num)])
+    plt.ylim([0,len(grid_block_num[0])])
+    for row in range(len(grid_block_num)):
+        for line in range(len(grid_block_num[row])):
+            if grid_block_num[row][line] == 1:
                 plt.plot(row,line,'o',color = "k",)
     plt.show()
 
@@ -601,9 +666,9 @@ if __name__ == '__main__' and not __IPYTHON__:
     img.show()
 
 
-# In[ ]:
+# In[151]:
 
-"""
+
 filenum = "3"
 abc = SaikyoABC("test/strokes" + filenum + ".csv")
 abc.stroke_classifier()
@@ -611,65 +676,86 @@ p = [np.max(s[1]) for s in abc.stroke.STROKE]
 print(max(p))
 image_size = np.max(np.array([np.max(s,axis=1) for s in abc.stroke.STROKE]),axis=0)
 print(image_size)
-"""
 
 
-# In[ ]:
+# In[152]:
 
-"""
+
 import PIL
 imagename = "test/image" + filenum + ".gif"
 image = PIL.Image.open(imagename)
 overlayimage = abc.overlay_image(image)
 overlayimage2 = abc.overlay_block_image(overlayimage)
 overlayimage2
-"""
 
 
-# In[ ]:
+# In[153]:
 
-"""
+
 print(abc.block_center[1])
 print(abc.block_center)
-"""
 
 
-# In[ ]:
+# In[154]:
 
 
-"""
 abc.get_feature_value()
-"""
 
 
-# In[ ]:
+# In[157]:
 
-"""
+#print(abc.block_grid[1])
 #print(abc.block_grid)
-print("A")
-grid_plot(abc.block_grid[3])
-"""
+grid_plot(abc.block_grid[2])
 
 
 # In[ ]:
 
-"""
-print(abc.block_grid[3])
-"""
+
+print(abc.block_grid[0][0])
 
 
-# In[ ]:
+# In[17]:
 
-"""
+
 plt.plot(1,2,'o',color="k")
 plt.plot(3,4,'o',color="k")
 plt.show()
-"""
 
 
-# In[ ]:
+# In[94]:
+
+a = np.array([[0 for j in range(5)] for i in range(5)])
 
 
+# In[163]:
+
+print(a[1][1])
+a[1][1] = 5
+a[2][3] = 1
+print(a)
+
+
+# In[164]:
+
+print(a.nonzero())
+
+
+# In[175]:
+
+def angle(x, y):
+
+    dot_xy = np.dot(x, y)
+    norm_x = np.linalg.norm(x)
+    norm_y = np.linalg.norm(y)
+    cos = dot_xy / (norm_x*norm_y)
+    rad = np.arccos(cos)
+    theta = rad * 180 / np.pi
+
+    return theta
+a = np.array([1,0])
+b = np.array([-1,0])
+print(angle(a,b))
 
 
 # In[ ]:

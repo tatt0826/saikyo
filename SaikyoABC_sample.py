@@ -126,30 +126,21 @@ if len(a) == 0 :
     print("a")
 
 
-# In[4]:
+# In[30]:
 
 a = [[1]]
 a.append(1)
 print (a)
 
 
-# In[8]:
-
-class A(object):
-    def __init__(self,name):
-          self.name = name
+# In[ ]:
 
 
-# In[24]:
-
-class B(A):
-    def __init__(self):
-        print(self.name)
 
 
-# In[26]:
+# In[ ]:
 
-B("AAA")
+
 
 
 # In[ ]:
